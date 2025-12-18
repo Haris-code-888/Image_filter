@@ -4,8 +4,8 @@ import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
 
-# --- 1. THE ENGINE (Advanced Logic) ---
-class AdvancedFilterEngine:
+# --- 1. THE ADVANCED ENGINE ---
+class DIPEngine:
     @staticmethod
     def apply_sepia(img):
         kernel = np.array([[0.272, 0.534, 0.131],
@@ -36,90 +36,114 @@ class AdvancedFilterEngine:
             cv2.rectangle(img_copy, (x, y), (x+w, y+h), (0, 255, 0), 5)
         return img_copy, len(faces)
 
-# --- 2. THE UI STYLING ---
-st.set_page_config(page_title="DIP Studio Pro", layout="wide")
+    # --- NEW CONCEPTS: INTERPOLATION & LAPLACIAN ---
+    @staticmethod
+    def apply_interpolation(img, scale, method_name):
+        """
+        Geometric Transformation: Estimates new pixel values when resizing.
+        """
+        methods = {
+            "Nearest (Fast/Pixelated)": cv2.INTER_NEAREST,
+            "Bilinear (Balanced)": cv2.INTER_LINEAR,
+            "Bicubic (High Quality)": cv2.INTER_CUBIC
+        }
+        width = int(img.shape[1] * scale)
+        height = int(img.shape[0] * scale)
+        return cv2.resize(img, (width, height), interpolation=methods[method_name])
 
+    @staticmethod
+    def apply_laplacian(img):
+        """
+        Frequency Analysis: High-pass filter using 2nd order derivatives.
+        """
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        # CV_64F captures negative slopes, which we then take absolute value of
+        lap = cv2.Laplacian(gray, cv2.CV_64F, ksize=3)
+        lap = np.uint8(np.absolute(lap))
+        return cv2.cvtColor(lap, cv2.COLOR_GRAY2RGB)
+
+    @staticmethod
+    def apply_canny(img, t1, t2):
+        edges = cv2.Canny(img, t1, t2)
+        return cv2.cvtColor(edges, cv2.COLOR_GRAY2RGB)
+
+# --- 2. UI & STYLE ---
+st.set_page_config(page_title="Ultimate DIP Studio", layout="wide")
 st.markdown("""
     <style>
     .stApp { background-color: #0e1117; color: white; }
     [data-testid="stSidebar"] { background-color: #161b22; border-right: 1px solid #30363d; }
-    .stButton>button { width: 100%; border-radius: 20px; background-color: #0095f6; color: white; border: none; }
     h1, h2, h3 { color: #0095f6 !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. THE INTERFACE ---
-st.title("🎨 Advanced Digital Image Studio")
+# --- 3. INPUT HANDLING ---
+st.title("🚀 Ultimate Digital Image Studio")
 st.sidebar.markdown("### 🛠️ Input Source")
-
-# Select between Upload or Camera
-input_method = st.sidebar.radio("Select Input Method", ("Upload File", "Live Camera Capture"))
+input_method = st.sidebar.radio("Method", ("Upload File", "Live Camera"))
 
 final_img = None
-
 if input_method == "Upload File":
-    uploaded_file = st.sidebar.file_uploader("Upload an Image", type=["jpg", "png", "jpeg"])
-    if uploaded_file:
-        raw_img = Image.open(uploaded_file)
-        final_img = np.array(raw_img)
+    uploaded = st.sidebar.file_uploader("Choose Image", type=["jpg", "png", "jpeg"])
+    if uploaded:
+        final_img = np.array(Image.open(uploaded))
 else:
-    captured_photo = st.camera_input("Take a snapshot to process")
-    if captured_photo:
-        raw_img = Image.open(captured_photo)
-        final_img = np.array(raw_img)
+    captured = st.camera_input("Take a photo")
+    if captured:
+        final_img = np.array(Image.open(captured))
 
-# --- 4. PROCESSING LOGIC ---
+# --- 4. FILTER EXECUTION ---
 if final_img is not None:
     st.sidebar.markdown("---")
-    st.sidebar.markdown("### 🎨 Filter Gallery")
-    filter_type = st.sidebar.selectbox("Choose Filter", ["Original", "Vintage Sepia", "Beauty Smooth", "Pencil Sketch", "Face Detection"])
+    filter_type = st.sidebar.selectbox("Select Transformation", 
+        ["Original", "Interpolation Rescale", "Laplacian Edges", "Face Detection", "Pencil Sketch", "Beauty Smooth", "Vintage Sepia", "Canny Edges"])
     
-    strength = 75
-    if filter_type == "Beauty Smooth":
-        strength = st.sidebar.slider("Smoothing Power", 10, 150, 75)
+    engine = DIPEngine()
+    
+    if filter_type == "Interpolation Rescale":
+        sc = st.sidebar.slider("Scale Factor", 0.2, 3.0, 1.0)
+        met = st.sidebar.radio("Interpolation Algorithm", ("Nearest (Fast/Pixelated)", "Bilinear (Balanced)", "Bicubic (High Quality)"))
+        result = engine.apply_interpolation(final_img, sc, met)
+        st.sidebar.info(f"Resolution: {result.shape[1]} x {result.shape[0]}")
+    
+    elif filter_type == "Laplacian Edges":
+        result = engine.apply_laplacian(final_img)
+        st.sidebar.write("Concept: 2nd Order Derivative")
+        
+    elif filter_type == "Face Detection":
+        result, count = engine.detect_faces(final_img)
+        st.sidebar.success(f"Detected: {count}")
+        
     elif filter_type == "Pencil Sketch":
-        strength = st.sidebar.select_slider("Sketch Detail", options=[15, 21, 31, 51])
+        det = st.sidebar.slider("Detail", 11, 51, 21, step=2)
+        result = engine.apply_sketch(final_img, det)
+        
+    elif filter_type == "Beauty Smooth":
+        pwr = st.sidebar.slider("Power", 10, 150, 75)
+        result = engine.apply_beauty_smooth(final_img, pwr)
+        
+    elif filter_type == "Vintage Sepia":
+        result = engine.apply_sepia(final_img)
+        
+    elif filter_type == "Canny Edges":
+        t1 = st.sidebar.slider("T1", 0, 255, 100)
+        t2 = st.sidebar.slider("T2", 0, 255, 200)
+        result = engine.apply_canny(final_img, t1, t2)
+    else:
+        result = final_img
 
-    engine = AdvancedFilterEngine()
-    with st.spinner('Applying advanced math...'):
-        if filter_type == "Original":
-            result = final_img
-        elif filter_type == "Vintage Sepia":
-            result = engine.apply_sepia(final_img)
-        elif filter_type == "Beauty Smooth":
-            result = engine.apply_beauty_smooth(final_img, strength)
-        elif filter_type == "Pencil Sketch":
-            result = engine.apply_sketch(final_img, strength)
-        elif filter_type == "Face Detection":
-            result, count = engine.detect_faces(final_img)
-            st.sidebar.info(f"Faces Detected: {count}")
+    # Display Side-by-Side
+    c1, c2 = st.columns(2)
+    with c1: st.image(final_img, caption="Source", use_container_width=True)
+    with c2: st.image(result, caption=filter_type, use_container_width=True)
 
-    # Layout: Side-by-Side Comparison
-    col1, col2 = st.columns(2)
-    with col1:
-        st.subheader("Source Image")
-        st.image(final_img, use_container_width=True)
-    with col2:
-        st.subheader(f"Processed: {filter_type}")
-        st.image(result, use_container_width=True)
-
-    # Advanced Analysis: Histogram
-    st.markdown("---")
-    st.subheader("📊 Color Distribution Analysis (Processed)")
-    fig, ax = plt.subplots(figsize=(10, 3))
-    colors = ('red', 'green', 'blue')
-    for i, color in enumerate(colors):
+    # Histogram Analysis
+    st.subheader("📊 Frequency Distribution")
+    fig, ax = plt.subplots(figsize=(10, 2))
+    for i, col in enumerate(['red', 'green', 'blue']):
         hist = cv2.calcHist([result], [i], None, [256], [0, 256])
-        ax.plot(hist, color=color, alpha=0.7)
-    ax.set_facecolor('#0e1117')
-    fig.patch.set_facecolor('#0e1117')
-    ax.tick_params(colors='white')
+        ax.plot(hist, color=col)
+    ax.set_facecolor('#0e1117'); fig.patch.set_facecolor('#0e1117'); ax.tick_params(colors='white')
     st.pyplot(fig)
-    
-    # Download Button
-    result_pil = Image.fromarray(result)
-    result_pil.save("final_output.png")
-    with open("final_output.png", "rb") as f:
-        st.download_button("💾 Download Processed Image", f, file_name="processed_image.png")
 else:
-    st.info("Please upload an image or take a photo to begin.")
+    st.info("Awaiting Input...")
